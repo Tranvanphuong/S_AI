@@ -20,22 +20,84 @@ def parse_month(month_str: str) -> str:
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid month format, must be YYYY-MM")
 
+from fastapi import Body
+
 @app.post("/api/calculate-salary")
-async def calculate_salary(file: UploadFile = File(...)):
-    # TODO: Đọc file Excel/CSV, parse, tính lương, insert vào payrolls
-    # Giả lập kết quả trả về
+async def calculate_salary(payload: dict = Body(...)):
+    """
+    Tính lương cho tất cả nhân viên theo tháng (dạng YYYY-MM).
+    Dữ liệu lấy từ Supabase: employees (is_active), attendance_details (work_type, work_date).
+    """
+    import math
+
+    month = payload.get("month")
+    if not month or len(month) != 7 or month[4] != "-":
+        raise HTTPException(status_code=400, detail="month phải có định dạng YYYY-MM")
+
+    # Lấy danh sách nhân viên active từ Supabase
+    emp_res = supabase.table("employees").select("employee_id,full_name,is_active").eq("is_active", True).execute()
+    employees = emp_res.data if emp_res.data else []
+
+    # Lấy dữ liệu chấm công từ Supabase theo tháng
+    # Lọc work_date theo tháng, chỉ lấy work_type = "Làm việc"
+    att_res = supabase.table("attendance_details").select("employee_id,work_date,work_type").eq("work_type", "Làm việc").execute()
+    attendance = []
+    for row in att_res.data if att_res.data else []:
+        try:
+            work_date = pd.to_datetime(row["work_date"])
+            if work_date.strftime("%Y-%m") == month:
+                attendance.append({
+                    "employee_id": row["employee_id"],
+                    "work_date": work_date
+                })
+        except Exception:
+            continue
+
+    # Số công chuẩn
+    STANDARD_DAYS = 22
+    GROSS_SALARY = 20_000_000
+
+    payrolls = []
+    total_payroll = 0
+
+    # Chuẩn bị dữ liệu để insert vào payrolls
+    payrolls_to_insert = []
+    for emp in employees:
+        emp_id = emp["employee_id"]
+        full_name = emp["full_name"]
+        # Đếm số công thực tế
+        workdays = len({a["work_date"] for a in attendance if a["employee_id"] == emp_id})
+        # Tính lương
+        if workdays >= STANDARD_DAYS:
+            net_salary = GROSS_SALARY
+        else:
+            net_salary = math.floor(GROSS_SALARY * workdays / STANDARD_DAYS / 1000) * 1000  # Làm tròn nghìn
+        total_payroll += net_salary
+        payrolls.append({
+            "employee_id": emp_id,
+            "full_name": full_name,
+            "gross_salary": GROSS_SALARY,
+            "net_salary": net_salary
+        })
+        payrolls_to_insert.append({
+            "employee_id": emp_id,
+            "month": month + "-01",  # chuẩn hóa về dạng YYYY-MM-01
+            "gross_salary": GROSS_SALARY,
+            "net_salary": net_salary,
+        })
+
+    # Insert payrolls vào bảng payrolls trên Supabase
+    if payrolls_to_insert:
+        # Xóa các bản ghi cũ của tháng này (nếu có) để tránh trùng lặp
+        emp_ids = [p["employee_id"] for p in payrolls_to_insert]
+        supabase.table("payrolls").delete().eq("month", month + "-01").in_("employee_id", emp_ids).execute()
+        # Insert mới
+        supabase.table("payrolls").insert(payrolls_to_insert).execute()
+
     return {
-        "month": "2025-08",
-        "total_payroll": 1200000000,
-        "payrolls": [
-            {
-                "employee_id": "E001",
-                "gross_salary": 15000000,
-                "tax": 1500000,
-                "insurance": 1000000,
-                "net_salary": 12500000
-            }
-        ]
+        "month": month,
+        "total_payroll": total_payroll,
+        "payrolls": payrolls
     }
 
 @app.get("/api/salary/{employee_id}/{month}")
