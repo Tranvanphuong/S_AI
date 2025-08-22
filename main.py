@@ -5,10 +5,13 @@ from supabase import create_client, Client
 from typing import List, Optional
 from datetime import datetime
 import pandas as pd
+import dotenv
+
+dotenv.load_dotenv()
 
 # Đọc cấu hình Supabase từ biến môi trường
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://helztticlepdbkvdlyuo.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlbHp0dGljbGVwZGJrdmRseXVvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MjAzMzcyMiwiZXhwIjoyMDY3NjA5NzIyfQ.aX3QPAHhkyC2-MkMMhjHLgARuCpRLUWzLyqWFeV2RnI")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI(title="Payroll Management API")
@@ -111,8 +114,6 @@ def get_salary(employee_id: str, month: str):
         "employee_id": payroll["employee_id"],
         "month": month,
         "gross_salary": payroll["gross_salary"],
-        "tax": payroll["tax"],
-        "insurance": payroll["insurance"],
         "net_salary": payroll["net_salary"],
         "overtime_hours": payroll.get("overtime_hours", 0),
         "leave_days": payroll.get("leave_days", 0)

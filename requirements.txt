@@ -2,4 +2,5 @@ fastapi
 uvicorn
 supabase
 pandas
+python-dotenv
 python-multipart
